@@ -1,0 +1,11 @@
+.dart_tool/
+.flutter-plugins*
+build/
+backend/config.php
+/config.php
+grupocg-config.php
+*.iml
+*.jks
+android/local.properties
+.idea/
+.local/
