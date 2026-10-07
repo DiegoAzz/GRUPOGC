@@ -14,7 +14,8 @@ class Api {
         .post(Uri.parse(url),
             headers: {
               'Content-Type': 'application/json',
-              if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+              if (token.isNotEmpty && token != 'cookie-session')
+                'Authorization': 'Bearer $token',
             },
             body: jsonEncode({'action': action, ...?data}))
         .timeout(const Duration(seconds: 30));

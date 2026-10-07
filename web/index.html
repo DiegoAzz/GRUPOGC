@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -18,21 +18,33 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Gestión de transporte y cobros de Grupo CG.">
+  <meta name="theme-color" content="#006bb6">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="grupo_cg">
+  <meta name="apple-mobile-web-app-title" content="Grupo CG">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>grupo_cg</title>
+  <title>Grupo CG</title>
   <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="install.css">
 </head>
 <body>
+  <aside id="install-banner" aria-label="Instalar Grupo CG" hidden>
+    <div>
+      <strong>Grupo CG en tu dispositivo</strong>
+      <p id="install-description">Instala la aplicación para abrirla desde tu pantalla de inicio.</p>
+    </div>
+    <button id="install-button" type="button">Instalar</button>
+    <button id="install-dismiss" type="button" aria-label="Cerrar aviso de instalación">Cerrar</button>
+  </aside>
+  <script src="install.js"></script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
@@ -41,6 +53,6 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async></script>
+  <script src="flutter_bootstrap.js?v=20261006-fotos-contabilidad" async></script>
 </body>
 </html>

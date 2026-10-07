@@ -39,7 +39,11 @@ directorio del dominio/
 
 Registrar emisor, clientes, vehículos, conductores y firmas (PNG/JPG, máximo 2 MB). Registrar cobros; escribir valor sin separador de miles. Para emitir, seleccionar cliente, firma, concepto y periodo inclusivo. Se genera consecutivo, total, importe en letras, detalle y firma. Abrir el historial permite reimprimir sin crear otra cuenta.
 
-El historial conserva copias de los datos y la firma. Generar otra vez el mismo periodo crea otra cuenta: esta versión no marca pagos ni impide volver a incluir cobros. No incluye eliminación, conciliación ni roles. Los usuarios autorizados comparten los registros de la empresa. Sesión de 8 horas en memoria.
+El historial conserva copias de los datos y la firma. Generar otra vez el mismo periodo crea otra cuenta: esta versión no marca pagos ni impide volver a incluir cobros. No incluye conciliación ni roles. Los usuarios autorizados comparten los registros de la empresa. Sesión de 8 horas en memoria.
+
+Todos los módulos permiten eliminar registros con confirmación. Clientes, vehículos y conductores no pueden eliminarse mientras tengan cobros asociados: primero se deben modificar o eliminar esos cobros. Eliminar registros de origen no modifica las cuentas emitidas. Eliminar una cuenta la quita del historial, conserva los cobros originales y no reutiliza su consecutivo; los PDF descargados permanecen en los dispositivos. Eliminar los datos del emisor obliga a configurarlos antes de emitir nuevas cuentas.
+
+Para activar la eliminación al publicar, actualizar tanto `build/web/` como `backend/public/index.php` en `public_html/grupocg/api/index.php`. No requiere cambios de esquema ni volver a importar la base de datos.
 
 El PDF se titula Cuenta de cobro, con distribución basada en la referencia; no copia sus datos personales ni leyendas normativas. La firma es una imagen digitalizada.
 
@@ -48,3 +52,5 @@ El PDF se titula Cuenta de cobro, con distribución basada en la referencia; no 
 `flutter analyze` y `flutter test`. Antes de producción verificar en Hostinger acceso, altas y cambios, rechazo de valores/fechas/firmas inválidos, periodo vacío, límites de fechas, total decimal y reimpresión tras editar datos originales. Respaldar MySQL, que contiene firmas e historial.
 
 Referencias: [PHP/MySQL en Hostinger](https://www.hostinger.com/my/tutorials/how-to-connect-php-to-mysql), [PDF Flutter](https://pub.dev/packages/pdf).
+
+Prueba adicional de eliminación: `scripts/check-delete.php` usa MySQL local en el puerto 3307 y un servidor PHP temporal en 8087. Crea y elimina su propia base de pruebas; requiere las credenciales locales de `.local/mysql-admin.json` y la extensión `pdo_mysql`. No se debe publicar este script.

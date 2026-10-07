@@ -52,10 +52,12 @@ class RecordFormDialog extends StatefulWidget {
       required this.title,
       required this.fields,
       this.initial,
+      this.onDelete,
       this.choices = const {}});
   final String title;
   final Map<String, String> fields;
   final Map<String, dynamic>? initial;
+  final VoidCallback? onDelete;
   final Map<String, List<DropdownMenuItem<String>>> choices;
 
   @override
@@ -184,6 +186,13 @@ class _RecordFormDialogState extends State<RecordFormDialog> {
               ]),
             ))),
         actions: [
+          if (widget.onDelete != null)
+            TextButton.icon(
+                onPressed: widget.onDelete,
+                style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Eliminar')),
           TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancelar')),

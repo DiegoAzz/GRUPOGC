@@ -1,0 +1,29 @@
+ARCHIVOS DEL SERVIDOR PARA HOSTINGER
+
+1. Sube los dos archivos de public_html/grupocg/api/ a esa misma ruta
+   en el administrador de archivos de tu dominio:
+   public_html/grupocg/api/index.php
+   public_html/grupocg/api/.htaccess
+
+2. Edita grupocg-config.php y reemplaza YOUR_DATABASE_PASSWORD por la
+   contraseña del usuario MySQL de Hostinger. Comprueba también el nombre
+   de la base de datos y el usuario MySQL. No son el usuario y contraseña
+   con los que inicias sesión en la aplicación.
+
+3. Sube grupocg-config.php a la carpeta superior a public_html,
+   NO dentro de public_html ni dentro de api.
+
+   Carpeta del dominio/
+     grupocg-config.php
+     public_html/
+       grupocg/
+         index.html (la aplicación Flutter ya publicada)
+         api/
+           index.php
+           .htaccess
+
+No reemplaces el index.html de Flutter. No vuelvas a importar el esquema
+si ya creaste las tablas. Este paquete solo contiene el servidor PHP y
+la plantilla de configuración; no incluye datos ni contraseñas reales.
+
+Si no ves .htaccess, activa la visualización de archivos ocultos.

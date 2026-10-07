@@ -6,6 +6,11 @@ import 'package:printing/printing.dart';
 import 'api.dart';
 import 'record_form.dart';
 import 'document.dart';
+import 'bill_columns.dart';
+import 'users_page.dart';
+import 'bill_edit.dart';
+import 'ledger_page.dart';
+import 'planilla_photos_page.dart';
 
 void main() => runApp(const CobrosApp());
 
@@ -30,13 +35,14 @@ class CobrosApp extends StatelessWidget {
 }
 
 class Home extends StatefulWidget {
-  const Home({super.key});
+  const Home({super.key, this.api});
+  final Api? api;
   @override
   State<Home> createState() => _HomeState();
 }
 
 class _HomeState extends State<Home> {
-  final api = Api();
+  late final api = widget.api ?? Api();
   Map<String, dynamic> data = {
     'clients': [],
     'charges': [],
@@ -48,6 +54,31 @@ class _HomeState extends State<Home> {
   };
   bool busy = false;
   int page = 0;
+  bool restoringSession = false;
+  @override
+  void initState() {
+    super.initState();
+    if (widget.api == null) {
+      restoringSession = true;
+      restoreSession();
+    }
+  }
+
+  Future<void> restoreSession() async {
+    try {
+      final result = await api.call('state');
+      if (!mounted) return;
+      setState(() {
+        data = Map<String, dynamic>.from(result);
+        api.token = 'cookie-session';
+      });
+    } catch (_) {
+      // An absent or revoked cookie returns to the login form.
+    } finally {
+      if (mounted) setState(() => restoringSession = false);
+    }
+  }
+
   String query = '';
   static const titles = [
     'Cobros',
@@ -79,11 +110,21 @@ class _HomeState extends State<Home> {
 
   Future<Map<String, String>?> form(String title, Map<String, String> fields,
       {Map<String, dynamic>? initial,
+      VoidCallback? onDelete,
       Map<String, List<DropdownMenuItem<String>>> choices = const {}}) async {
     return showDialog<Map<String, String>>(
       context: context,
-      builder: (_) => RecordFormDialog(
-          title: title, fields: fields, initial: initial, choices: choices),
+      builder: (dialogContext) => RecordFormDialog(
+          title: title,
+          fields: fields,
+          initial: initial,
+          choices: choices,
+          onDelete: onDelete == null
+              ? null
+              : () {
+                  Navigator.pop(dialogContext);
+                  onDelete();
+                }),
     );
   }
 
@@ -137,6 +178,8 @@ class _HomeState extends State<Home> {
             : '${item == null ? 'Nuevo registro' : 'Editar registro'} · ${fields.values.first}',
         fields,
         initial: initial,
+        onDelete:
+            item?['id'] == null ? null : () => deleteRecord(entity, item!),
         choices: entity == 'charges'
             ? {
                 'client_id': options('clients'),
@@ -171,6 +214,51 @@ class _HomeState extends State<Home> {
     });
   }
 
+  Future<void> deleteRecord(String entity, Map<String, dynamic> item) async {
+    if (busy) return;
+    final label = entity == 'charges'
+        ? 'Planilla ${item['sheet']}'
+        : entity == 'bills'
+            ? 'Cuenta ${item['number']}'
+            : item['name'].toString();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Eliminar registro?'),
+        content: Text(
+            'Se eliminará «$label». Esta acción no se puede deshacer.\n\n'
+            '${entity == 'bills' ? 'Se quitará del historial. Los cobros originales y los PDF descargados se conservarán.' : 'Las cuentas de cobro ya emitidas conservarán su información.'}'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  foregroundColor: Theme.of(context).colorScheme.onError),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Eliminar')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || busy) return;
+    await run(() async {
+      await api.call('delete', {'entity': entity, 'id': item['id']});
+      // Reflect a successful deletion even if the subsequent refresh fails.
+      if (!mounted) return;
+      setState(() {
+        if (entity == 'issuer') {
+          data['issuer'] = <String, dynamic>{};
+        } else {
+          (data[entity] as List).removeWhere((r) => r['id'] == item['id']);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Registro eliminado correctamente.')));
+      await refresh();
+    });
+  }
+
   Future<void> generate() async {
     if ((data['clients'] as List).isEmpty ||
         (data['signatures'] as List).isEmpty) {
@@ -179,10 +267,9 @@ class _HomeState extends State<Home> {
               'Registra primero un cliente, una firma y los datos del emisor.')));
       return;
     }
-    final values = await form('Generar cuenta de cobro', {
+    final values = await form('Generar cuenta · RUTA: cliente elegido', {
       'client_id': 'Cliente',
-      'signature_id': 'Firma',
-      'concept': 'Concepto / ruta'
+      'signature_id': 'Firma'
     }, choices: {
       'client_id': options('clients'),
       'signature_id': options('signatures')
@@ -193,36 +280,157 @@ class _HomeState extends State<Home> {
         firstDate: DateTime(2000),
         lastDate: DateTime(2100),
         helpText: 'Selecciona el periodo de cobro');
-    if (range == null) return;
+    if (range == null || !mounted) return;
+    final from = range.start.toIso8601String().substring(0, 10);
+    final to = range.end.toIso8601String().substring(0, 10);
+    final rows = (data['charges'] as List)
+        .where((r) =>
+            '${r['client_id']}' == values['client_id'] &&
+            (r['date'] as String).compareTo(from) >= 0 &&
+            (r['date'] as String).compareTo(to) <= 0)
+        .toList();
+    if (rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No hay cobros para el cliente en ese periodo.')));
+      return;
+    }
+    final layout = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (_) => BillColumnsDialog(bill: {
+              'rows': rows,
+              'columns': [
+                {'key': 'date', 'label': 'Fecha'},
+                {'key': 'sheet', 'label': 'Planilla'},
+                {'key': 'amount', 'label': 'Valor'},
+              ],
+            }));
+    if (layout == null || !mounted) return;
     await run(() async {
-      final bill = await api.call('generate', {
-        ...values,
-        'from': range.start.toIso8601String().substring(0, 10),
-        'to': range.end.toIso8601String().substring(0, 10)
-      });
+      final bill = await api
+          .call('generate', {...values, ...layout, 'from': from, 'to': to});
       await refresh();
       if (mounted) await preview(Map<String, dynamic>.from(bill));
     });
   }
 
   Future<void> preview(Map<String, dynamic> bill) async {
-    final bytes = await buildDocument(bill);
+    var bytes = await buildDocument(bill);
+    var editing = false;
     if (!mounted) return;
     await Navigator.push(
         context,
         MaterialPageRoute<void>(
-            builder: (_) => Scaffold(
-                appBar: AppBar(title: Text('Cuenta ${bill['number']}')),
-                body: PdfPreview(
-                    build: (_) async => bytes,
-                    pdfFileName: 'Cuenta-${bill['number']}.pdf',
-                    canChangePageFormat: false,
-                    canChangeOrientation: false,
-                    allowSharing: true))));
+            builder: (previewContext) => StatefulBuilder(
+                builder: (context, updatePreview) => Scaffold(
+                    appBar: AppBar(
+                        title: Text('Cuenta ${bill['number']}'),
+                        actions: [
+                          TextButton.icon(
+                            icon: const Icon(Icons.edit_outlined),
+                            label: const Text('Editar cuenta'),
+                            onPressed: editing
+                                ? null
+                                : () async {
+                                    updatePreview(() => editing = true);
+                                    try {
+                                      final editContext =
+                                          Map<String, dynamic>.from(await api
+                                              .call('bill_edit_context',
+                                                  {'id': bill['id']}));
+                                      if (!previewContext.mounted) return;
+                                      final changes = await showDialog<
+                                              Map<String, dynamic>>(
+                                          context: previewContext,
+                                          builder: (_) => BillEditDialog(
+                                              contextData: editContext));
+                                      if (changes == null) return;
+                                      final updated = Map<String, dynamic>.from(
+                                          await api.call('bill_edit', changes));
+                                      final updatedBytes =
+                                          await buildDocument(updated);
+                                      if (!previewContext.mounted) return;
+                                      updatePreview(() {
+                                        bill = updated;
+                                        bytes = updatedBytes;
+                                      });
+                                      await refresh();
+                                    } catch (e) {
+                                      if (previewContext.mounted) {
+                                        ScaffoldMessenger.of(previewContext)
+                                            .showSnackBar(SnackBar(
+                                                content: Text(e
+                                                    .toString()
+                                                    .replaceFirst(
+                                                        'Exception: ', ''))));
+                                      }
+                                    } finally {
+                                      if (previewContext.mounted) {
+                                        updatePreview(() => editing = false);
+                                      }
+                                    }
+                                  },
+                          ),
+                          TextButton.icon(
+                              onPressed: editing
+                                  ? null
+                                  : () async {
+                                      final layout = await showDialog<
+                                              Map<String, dynamic>>(
+                                          context: context,
+                                          builder: (_) =>
+                                              BillColumnsDialog(bill: bill));
+                                      if (layout == null ||
+                                          !previewContext.mounted) {
+                                        return;
+                                      }
+                                      updatePreview(() => editing = true);
+                                      try {
+                                        final updated =
+                                            Map<String, dynamic>.from(await api
+                                                .call('bill_layout', {
+                                          'id': bill['id'],
+                                          ...layout
+                                        }));
+                                        final updatedBytes =
+                                            await buildDocument(updated);
+                                        if (!previewContext.mounted) return;
+                                        updatePreview(() {
+                                          bill = updated;
+                                          bytes = updatedBytes;
+                                        });
+                                        await refresh();
+                                      } catch (e) {
+                                        if (previewContext.mounted) {
+                                          ScaffoldMessenger.of(previewContext)
+                                              .showSnackBar(SnackBar(
+                                                  content: Text(e
+                                                      .toString()
+                                                      .replaceFirst(
+                                                          'Exception: ', ''))));
+                                        }
+                                      } finally {
+                                        if (previewContext.mounted) {
+                                          updatePreview(() => editing = false);
+                                        }
+                                      }
+                                    },
+                              icon: const Icon(Icons.view_column_outlined),
+                              label: const Text('Columnas')),
+                        ]),
+                    body: PdfPreview(
+                        key: ValueKey(bytes),
+                        build: (_) async => bytes,
+                        pdfFileName: 'Cuenta-${bill['number']}.pdf',
+                        canChangePageFormat: false,
+                        canChangeOrientation: false,
+                        allowSharing: true)))));
   }
 
   @override
   Widget build(BuildContext context) {
+    if (restoringSession) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     if (api.token.isEmpty) {
       return Scaffold(
           body: Center(
@@ -251,6 +459,8 @@ class _HomeState extends State<Home> {
                                         final v = await form('Acceso', {
                                           'email': 'Correo',
                                           'password': 'Contraseña'
+                                        }, initial: {
+                                          'email': 'grupocg@gmail.com'
                                         });
                                         if (v != null) {
                                           await run(() async {
@@ -305,7 +515,7 @@ class _HomeState extends State<Home> {
             ]),
         drawer: Drawer(
             child: SafeArea(
-                child: Column(children: [
+                child: ListView(children: [
           const ListTile(
               title: Text('Administración de cobros'),
               subtitle: Text('Grupo CG')),
@@ -328,7 +538,40 @@ class _HomeState extends State<Home> {
                     query = '';
                   });
                   Navigator.pop(context);
-                })
+                }),
+          ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Fotos de planillas'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                        builder: (_) => PlanillaPhotosPage(api: api)));
+              }),
+          ListTile(
+              leading: const Icon(Icons.account_balance_wallet_outlined),
+              title: const Text('Contabilidad'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                        builder: (_) => LedgerPage(api: api)));
+              }),
+          if (data['current_user']?['can_manage_users'] == true)
+            ListTile(
+                leading: const Icon(Icons.manage_accounts_outlined),
+                title: const Text('Usuarios'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                          builder: (_) => UsersPage(
+                              api: api,
+                              adminId: data['current_user']['id'] as int)));
+                }),
         ]))),
         body: Center(
             child: ConstrainedBox(
@@ -369,8 +612,19 @@ class _HomeState extends State<Home> {
                                               'issuer',
                                               Map<String, dynamic>.from(
                                                   data['issuer'])),
-                                      child:
-                                          const Text('Editar datos del emisor'))
+                                      child: const Text(
+                                          'Editar datos del emisor')),
+                                  if (data['issuer']['id'] != null)
+                                    TextButton.icon(
+                                        onPressed: busy
+                                            ? null
+                                            : () => deleteRecord(
+                                                'issuer',
+                                                Map<String, dynamic>.from(
+                                                    data['issuer'])),
+                                        icon: const Icon(Icons.delete_outline),
+                                        label: const Text(
+                                            'Eliminar datos del emisor')),
                                 ])))
                   else if (records.isEmpty)
                     const Padding(
@@ -395,7 +649,7 @@ class _HomeState extends State<Home> {
                                               : Icons.picture_as_pdf,
                                       color: const Color(0xff006bb6)),
                               title: Text(page == 0
-                                  ? 'Planilla ${r['sheet']}'
+                                  ? 'Planilla ${r['sheet']} · ${money(r['amount'])}'
                                   : page == 3
                                       ? 'Cuenta ${r['number']}'
                                       : r['name']),
@@ -405,11 +659,13 @@ class _HomeState extends State<Home> {
                                       ? '${r['client']['name']} · ${r['from']} al ${r['to']}'
                                       : r['document']),
                               isThreeLine: page == 0,
-                              trailing: page == 0
-                                  ? Text(money(r['amount']),
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold))
-                                  : const Icon(Icons.chevron_right),
+                              trailing: IconButton(
+                                  tooltip: 'Eliminar registro',
+                                  icon: const Icon(Icons.delete_outline),
+                                  color: Theme.of(context).colorScheme.error,
+                                  onPressed: busy
+                                      ? null
+                                      : () => deleteRecord(entity, r)),
                               onTap: busy
                                   ? null
                                   : () => page == 3

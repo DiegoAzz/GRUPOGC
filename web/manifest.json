@@ -1,12 +1,14 @@
 {
-    "name": "grupo_cg",
-    "short_name": "grupo_cg",
+    "name": "Grupo CG",
+    "short_name": "Grupo CG",
+    "id": ".",
+    "scope": ".",
+    "lang": "es",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#f4f7fb",
+    "theme_color": "#006bb6",
+    "description": "Gestión de transporte y cobros de Grupo CG.",
     "prefer_related_applications": false,
     "icons": [
         {

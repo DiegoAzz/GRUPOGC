@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'bill_columns.dart';
 
 String money(num cents) =>
     NumberFormat.currency(locale: 'es_CO', symbol: r'$', decimalDigits: 2)
@@ -82,8 +83,30 @@ Future<Uint8List> buildDocument(Map<String, dynamic> bill) async {
   final issuer = bill['issuer'] as Map<String, dynamic>;
   final rows = (bill['rows'] as List).cast<Map<String, dynamic>>();
   final total = (bill['total'] as num).toInt();
+  final columns = billColumns(bill);
+  final equivalent = bill['template'] == 'equivalent_v1';
+  final recipient = equivalent ? bill['recipient'] as Map : client;
+  final date = DateTime.parse(bill['date'] as String);
+  const months = [
+    'ENERO',
+    'FEBRERO',
+    'MARZO',
+    'ABRIL',
+    'MAYO',
+    'JUNIO',
+    'JULIO',
+    'AGOSTO',
+    'SEPTIEMBRE',
+    'OCTUBRE',
+    'NOVIEMBRE',
+    'DICIEMBRE'
+  ];
+  final headingDate = equivalent
+      ? '${bill['document_city']}, ${date.day} DE ${months[date.month - 1]} DEL ${date.year}'
+      : '${issuer['city']}, ${bill['date']}';
   doc.addPage(pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
+      pageFormat:
+          columns.length > 5 ? PdfPageFormat.a4.landscape : PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(42),
       footer: (context) => pw.Align(
           alignment: pw.Alignment.centerRight,
@@ -91,16 +114,25 @@ Future<Uint8List> buildDocument(Map<String, dynamic> bill) async {
               'Cuenta ${bill['number']} · ${context.pageNumber} / ${context.pagesCount}',
               style: const pw.TextStyle(fontSize: 9))),
       build: (_) => [
-            pw.Center(child: pw.Text('${issuer['city']}, ${bill['date']}')),
-            pw.SizedBox(height: 24),
-            pw.Center(
-                child: pw.Text('CUENTA DE COBRO N.º ${bill['number']}',
-                    style: pw.TextStyle(
-                        fontSize: 17, fontWeight: pw.FontWeight.bold))),
+            pw.Center(child: pw.Text(headingDate)),
             pw.SizedBox(height: 24),
             pw.Center(
                 child: pw.Text(
-                    '${client['name']}\nNIT / CC: ${client['document']}',
+                    equivalent
+                        ? 'DOCUMENTO EQUIVALENTE A FACTURA\nN°${bill['number']}'
+                        : 'CUENTA DE COBRO N.º ${bill['number']}',
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(
+                        fontSize: equivalent ? 14 : 17,
+                        fontWeight: pw.FontWeight.bold))),
+            if (equivalent) ...[
+              pw.SizedBox(height: 6),
+              pw.Center(child: pw.Text(bill['legal_legend'] as String)),
+            ],
+            pw.SizedBox(height: 24),
+            pw.Center(
+                child: pw.Text(
+                    '${recipient['name']}\n${equivalent ? 'NIT:' : 'NIT / CC:'} ${recipient['document']}',
                     textAlign: pw.TextAlign.center)),
             pw.SizedBox(height: 24),
             pw.Center(
@@ -108,30 +140,41 @@ Future<Uint8List> buildDocument(Map<String, dynamic> bill) async {
                     'Debe a:\n${issuer['name']}\nNIT / CC: ${issuer['document']}\n${issuer['phone']}\n${issuer['address']}\n${issuer['email']}',
                     textAlign: pw.TextAlign.center)),
             pw.SizedBox(height: 24),
-            pw.Text('Por concepto de: ${bill['concept']}'),
-            pw.Text('Periodo: ${bill['from']} al ${bill['to']}'),
-            pw.SizedBox(height: 14),
-            pw.Text(money(total),
-                style:
-                    pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-            pw.Text(
-                '${words(total ~/ 100).toUpperCase()} PESOS CON ${(total % 100).toString().padLeft(2, '0')}/100'),
+            if (equivalent) ...[
+              pw.Center(child: pw.Text('Por concepto de:')),
+              pw.SizedBox(height: 12),
+              pw.Center(
+                  child: pw.Text((bill['concept'] as String).toUpperCase())),
+              pw.SizedBox(height: 8),
+              pw.Center(
+                  child: pw.Text(
+                      '(${NumberFormat(total % 100 == 0 ? '#,##0' : '#,##0.00', 'es_CO').format(total / 100)})')),
+              pw.SizedBox(height: 8),
+              pw.Center(
+                  child: pw.Text(
+                      '${words(total ~/ 100).toUpperCase()}${total % 100 == 0 ? '' : ' CON ${(total % 100).toString().padLeft(2, '0')}/100'}',
+                      textAlign: pw.TextAlign.center)),
+            ] else ...[
+              pw.Text('Por concepto de: ${bill['concept']}'),
+              pw.Text('Periodo: ${bill['from']} al ${bill['to']}'),
+              pw.SizedBox(height: 14),
+              pw.Text(money(total),
+                  style: pw.TextStyle(
+                      fontSize: 18, fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                  '${words(total ~/ 100).toUpperCase()} PESOS CON ${(total % 100).toString().padLeft(2, '0')}/100'),
+            ],
             pw.SizedBox(height: 20),
             pw.TableHelper.fromTextArray(
-                headers: [
-                  'Fecha',
-                  'Vehículo',
-                  'Conductor',
-                  'Planilla',
-                  'Valor'
-                ],
+                headers: columns.map((c) => c['label'].toString()).toList(),
                 data: rows
                     .map((r) => [
-                          r['date'],
-                          r['vehicle'],
-                          r['driver'],
-                          r['sheet'],
-                          money(r['amount'] as num)
+                          for (final c in columns)
+                            c['key'] == 'amount'
+                                ? money(r['amount'] as num)
+                                : standardBillColumns.containsKey(c['key'])
+                                    ? '${r[c['key']] ?? ''}'
+                                    : '${(r['custom_values'] as Map?)?[c['key']] ?? ''}'
                         ])
                     .toList(),
                 headerDecoration:

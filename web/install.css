@@ -1,0 +1,35 @@
+#install-banner[hidden] { display: none; }
+#install-banner {
+  position: fixed;
+  z-index: 2147483647;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  left: max(12px, env(safe-area-inset-left));
+  box-sizing: border-box;
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  border: 1px solid #cbdde9;
+  border-radius: 12px;
+  background: #fff;
+  color: #17324a;
+  box-shadow: 0 4px 24px #0003;
+  font: 15px/1.4 system-ui, sans-serif;
+}
+#install-banner div { flex: 1 1 250px; }
+#install-banner p { margin: 4px 0 0; }
+#install-banner button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+}
+#install-button { background: #006bb6; color: white; }
+#install-dismiss { background: #edf3f8; color: #17324a; }
+#install-banner button:focus-visible { outline: 3px solid #17324a; outline-offset: 3px; }
