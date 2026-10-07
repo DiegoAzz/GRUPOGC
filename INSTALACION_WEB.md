@@ -1,6 +1,18 @@
 # Instalación web de Grupo CG
 
+## Añadir planillas a una cuenta existente
+
+Abrir la cuenta desde **Cuentas de cobro**, pulsar **Editar cuenta** y luego **Añadir planilla**. Completar fecha, número de planilla, vehículo, conductor y valor. La planilla nueva queda pendiente hasta pulsar **Guardar cuenta y planillas**; se puede quitar antes de guardar y **Cancelar** descarta los cambios.
+
+Al guardar, se crea el cobro para el cliente de la cuenta y se incluye en esa misma cuenta. Se conserva su consecutivo y se recalculan total, periodo y PDF. Las columnas personalizadas de las filas nuevas quedan vacías y pueden completarse desde **Columnas**. Volver a descargar el PDF después de guardar.
+
+Actualizar la web y `api/index.php` juntos. No se requieren cambios de SQL.
+
 ## Fotos de planillas y contabilidad
+
+**Añadir fotos** permite seleccionar varias imágenes de la galería o tomar varias fotos, una por una, para el mismo número de planilla. Antes de guardar se muestran las miniaturas y se pueden quitar imágenes seleccionadas. En la lista, las fotos se agrupan por número de planilla; desplegar el grupo permite abrir o eliminar cada foto y añadir más con el número ya completado. Las fotos anteriores se agrupan automáticamente sin cambiar los datos guardados. Cada imagen se guarda por separado; si una carga falla se informa cuántas se guardaron para evitar volver a cargar esas fotos.
+
+Esta mejora de fotos utiliza la API existente y no necesita cambios de SQL. El paquete actualizado también incluye la mejora de añadir planillas a cuentas existentes, que sí requiere actualizar `api/index.php`.
 
 El menú incluye **Fotos de planillas**. Cada registro guarda número de planilla e imagen. Se puede tomar una foto con la cámara del dispositivo o escoger una imagen, buscar por número y abrir la foto después. La cámara necesita permiso del navegador y acceso HTTPS. Las fotos se comprimen a JPG de hasta 2 MB antes de subirlas; en la lista solo se envían sus datos, y la imagen completa se consulta al abrirla. Se pueden guardar varias fotos con el mismo número y eliminar cada una por separado.
 

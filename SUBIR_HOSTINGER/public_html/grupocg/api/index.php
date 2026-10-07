@@ -193,7 +193,13 @@ try {
             $originals[(int)$row['id']]=['payload'=>$charge,'revision'=>hash('sha256',$source)];
             $editable[]=['id'=>(int)$row['id'],'date'=>$charge['date'],'sheet'=>$charge['sheet'],'value'=>number_format($charge['amount']/100,2,'.',''),'revision'=>hash('sha256',$source)];
         }
-        if ($action==='bill_edit_context') { $db->commit(); respond(['bill'=>$bill,'revision'=>$revision,'rows'=>$editable]); }
+        if ($action==='bill_edit_context') {
+            $catalogs=['vehicles'=>[], 'drivers'=>[]];
+            foreach ($db->query("SELECT id,entity,payload FROM records WHERE entity IN ('vehicles','drivers') ORDER BY id") as $record) {
+                $catalogs[$record['entity']][]=json_decode($record['payload'],true)+['id'=>(int)$record['id']];
+            }
+            $db->commit(); respond(['bill'=>$bill,'revision'=>$revision,'rows'=>$editable]+$catalogs);
+        }
         required($input,['date']);
         if (!validDate($input['date'])) { $db->rollBack(); respond('Fecha de cuenta inválida.',422); }
         $changes=$input['rows'] ?? null;
@@ -209,12 +215,45 @@ try {
             if ($amount<=0) { $db->rollBack(); respond('El valor debe ser mayor que cero.',422); }
             $updated[$change['id']]=array_replace($originals[$change['id']]['payload'],['date'=>$change['date'],'sheet'=>trim($change['sheet']),'amount'=>$amount]);
         }
+        $newRows=$input['new_rows'] ?? [];
+        if (!is_array($newRows) || !array_is_list($newRows)) { $db->rollBack(); respond('Planillas adicionales inválidas.',422); }
+        $additions=[];
+        if ($newRows) {
+            $q=$db->prepare("SELECT id FROM records WHERE entity='clients' AND id=? FOR UPDATE"); $q->execute([$bill['client']['id']]);
+            if (!$q->fetchColumn()) { $db->rollBack(); respond('El cliente de la cuenta ya no existe.',409); }
+        }
+        foreach ($newRows as $newRow) {
+            if (!is_array($newRow)) { $db->rollBack(); respond('Planilla adicional inválida.',422); }
+            required($newRow,['date','sheet','vehicle_id','driver_id','value']);
+            $value=str_replace(',','.',$newRow['value']);
+            if (!validDate($newRow['date']) || !preg_match('/^\d{1,9}(\.\d{1,2})?$/D',$value)) { $db->rollBack(); respond('Fecha o valor de planilla inválido.',422); }
+            $parts=explode('.',$value); $amount=(int)$parts[0]*100+(int)str_pad($parts[1] ?? '',2,'0');
+            if ($amount<=0) { $db->rollBack(); respond('El valor debe ser mayor que cero.',422); }
+            $charge=['client_id'=>(string)$bill['client']['id'],'date'=>$newRow['date'],'sheet'=>trim($newRow['sheet']),'amount'=>$amount];
+            foreach (['vehicle'=>'vehicles','driver'=>'drivers'] as $field=>$catalog) {
+                if (!preg_match('/^[1-9][0-9]*$/D',$newRow[$field.'_id'])) { $db->rollBack(); respond('Vehículo o conductor inválido.',422); }
+                $q=$db->prepare('SELECT payload FROM records WHERE entity=? AND id=? FOR UPDATE'); $q->execute([$catalog,$newRow[$field.'_id']]);
+                $source=$q->fetchColumn();
+                if ($source===false) { $db->rollBack(); respond('Vehículo o conductor inexistente.',422); }
+                $charge[$field.'_id']=$newRow[$field.'_id'];
+                $charge[$field]=json_decode($source,true,512,JSON_THROW_ON_ERROR)['name'];
+            }
+            $additions[]=$charge;
+        }
         foreach ($updated as $chargeId=>$charge) $db->prepare("UPDATE records SET payload=? WHERE entity='charges' AND id=?")->execute([json_encode($charge,JSON_UNESCAPED_UNICODE),$chargeId]);
         foreach ($bill['rows'] as &$row) {
             $custom=$row['custom_values'] ?? new stdClass(); $chargeId=(int)$row['id'];
             $row=$updated[$chargeId]+['id'=>$chargeId,'custom_values'=>$custom,'client_name'=>$bill['client']['name']];
         }
         unset($row);
+        foreach ($additions as $charge) {
+            $db->prepare("INSERT INTO records(entity,payload) VALUES ('charges',?)")->execute([json_encode($charge,JSON_UNESCAPED_UNICODE)]);
+            $custom=[];
+            foreach ($bill['columns'] ?? [] as $column) {
+                if (str_starts_with($column['key'],'custom_')) $custom[$column['key']]='';
+            }
+            $bill['rows'][]=$charge+['id'=>(int)$db->lastInsertId(),'custom_values'=>(object)$custom,'client_name'=>$bill['client']['name']];
+        }
         usort($bill['rows'],fn($a,$b)=>[$a['date'],$a['id']]<=>[$b['date'],$b['id']]);
         $bill['date']=$input['date'];
         $bill['from']=min(array_column($bill['rows'],'date')); $bill['to']=max(array_column($bill['rows'],'date'));

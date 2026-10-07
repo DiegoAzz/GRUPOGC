@@ -47,16 +47,29 @@ class _PlanillaPhotosPageState extends State<PlanillaPhotosPage> {
     }
   }
 
-  Future<void> create() async {
+  Future<void> create([String? sheet]) async {
     final result = await showDialog<Map<String, dynamic>>(
-        context: context, builder: (_) => const PhotoEntryDialog());
+        context: context,
+        builder: (_) => PhotoEntryDialog(initialSheet: sheet));
     if (result == null || !mounted) return;
     await run(() async {
-      await widget.api.call('save_photo', result);
-      await load();
+      var saved = 0;
+      final images = result['images'] as List;
+      try {
+        for (final image in images) {
+          await widget.api
+              .call('save_photo', {'sheet': result['sheet'], 'image': image});
+          saved++;
+        }
+      } catch (e) {
+        throw Exception(
+            'Se guardaron $saved de ${images.length} fotos. ${e.toString().replaceFirst('Exception: ', '')}');
+      } finally {
+        await load();
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Foto de planilla guardada.')));
+            SnackBar(content: Text('$saved fotos de planilla guardadas.')));
       }
     });
   }
@@ -102,59 +115,84 @@ class _PlanillaPhotosPageState extends State<PlanillaPhotosPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Fotos de planillas'), actions: [
-          IconButton(
-              tooltip: 'Actualizar',
-              onPressed: busy ? null : () => run(load),
-              icon: const Icon(Icons.refresh))
-        ]),
-        body: ListView(padding: const EdgeInsets.all(20), children: [
-          if (busy) const LinearProgressIndicator(),
-          TextField(
-              decoration: const InputDecoration(
-                  labelText: 'Buscar número de planilla',
-                  prefixIcon: Icon(Icons.search)),
-              onChanged: (text) =>
-                  setState(() => search = text.trim().toLowerCase())),
-          const SizedBox(height: 16),
-          for (final photo in photos.where(
-              (p) => (p['sheet'] as String).toLowerCase().contains(search)))
-            Card(
-                child: ListTile(
-              leading: const Icon(Icons.photo_outlined),
-              title: Text('Planilla ${photo['sheet']}'),
-              subtitle:
-                  Text(photo['created_at']?.toString().split('T').first ?? ''),
-              trailing: IconButton(
-                  tooltip: 'Eliminar foto',
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: busy ? null : () => remove(photo)),
-              onTap: busy ? null : () => showPhoto(photo),
-            )),
-          if (photos.isEmpty)
-            const Center(
-                child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text('Aún no hay fotos de planillas.'))),
-          const SizedBox(height: 80),
-        ]),
-        floatingActionButton: FloatingActionButton.extended(
-            onPressed: busy ? null : create,
-            icon: const Icon(Icons.add_a_photo_outlined),
-            label: const Text('Nueva foto')),
-      );
+  Widget build(BuildContext context) {
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final photo in photos) {
+      final sheet = photo['sheet'] as String;
+      if (sheet.toLowerCase().contains(search)) {
+        groups.putIfAbsent(sheet, () => []).add(photo);
+      }
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('Fotos de planillas'), actions: [
+        IconButton(
+            tooltip: 'Actualizar',
+            onPressed: busy ? null : () => run(load),
+            icon: const Icon(Icons.refresh))
+      ]),
+      body: ListView(padding: const EdgeInsets.all(20), children: [
+        if (busy) const LinearProgressIndicator(),
+        TextField(
+            decoration: const InputDecoration(
+                labelText: 'Buscar número de planilla',
+                prefixIcon: Icon(Icons.search)),
+            onChanged: (text) =>
+                setState(() => search = text.trim().toLowerCase())),
+        const SizedBox(height: 16),
+        for (final group in groups.entries)
+          Card(
+              child: ExpansionTile(
+            leading: const Icon(Icons.photo_outlined),
+            title: Text('Planilla ${group.key}'),
+            subtitle: Text('${group.value.length} fotos'),
+            children: [
+              for (var i = 0; i < group.value.length; i++)
+                ListTile(
+                  leading: const Icon(Icons.image_outlined),
+                  title: Text('Foto ${i + 1}'),
+                  subtitle: Text(group.value[i]['created_at']
+                          ?.toString()
+                          .split('T')
+                          .first ??
+                      ''),
+                  trailing: IconButton(
+                      tooltip: 'Eliminar foto',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: busy ? null : () => remove(group.value[i])),
+                  onTap: busy ? null : () => showPhoto(group.value[i]),
+                ),
+              TextButton.icon(
+                onPressed: busy ? null : () => create(group.key),
+                icon: const Icon(Icons.add_a_photo_outlined),
+                label: const Text('Añadir fotos'),
+              ),
+            ],
+          )),
+        if (photos.isEmpty)
+          const Center(
+              child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('Aún no hay fotos de planillas.'))),
+        const SizedBox(height: 80),
+      ]),
+      floatingActionButton: FloatingActionButton.extended(
+          onPressed: busy ? null : create,
+          icon: const Icon(Icons.add_a_photo_outlined),
+          label: const Text('Añadir fotos')),
+    );
+  }
 }
 
 class PhotoEntryDialog extends StatefulWidget {
-  const PhotoEntryDialog({super.key});
+  const PhotoEntryDialog({super.key, this.initialSheet});
+  final String? initialSheet;
   @override
   State<PhotoEntryDialog> createState() => _PhotoEntryDialogState();
 }
 
 class _PhotoEntryDialogState extends State<PhotoEntryDialog> {
-  final sheet = TextEditingController();
-  Uint8List? imageBytes;
+  late final sheet = TextEditingController(text: widget.initialSheet);
+  final List<Uint8List> images = [];
   bool processing = false;
   String? error;
 
@@ -170,33 +208,36 @@ class _PhotoEntryDialogState extends State<PhotoEntryDialog> {
       error = null;
     });
     try {
-      final Uint8List? source;
+      final sources = <Uint8List>[];
       if (camera) {
-        source = await Navigator.push<Uint8List>(context,
+        final source = await Navigator.push<Uint8List>(context,
             MaterialPageRoute(builder: (_) => const CameraCapturePage()));
+        if (source != null) sources.add(source);
       } else {
-        final file = await ImagePicker().pickImage(
-            source: ImageSource.gallery,
-            maxWidth: 1600,
-            maxHeight: 1600,
-            imageQuality: 85);
-        source = file == null ? null : await file.readAsBytes();
+        final files = await ImagePicker()
+            .pickMultiImage(maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
+        for (final file in files) {
+          sources.add(await file.readAsBytes());
+        }
       }
-      if (source == null) return;
-      final decoded = img.decodeImage(source);
-      if (decoded == null) throw Exception('Selecciona una imagen JPG o PNG.');
-      final oriented = img.bakeOrientation(decoded);
-      final resized = oriented.width > 1600 || oriented.height > 1600
-          ? img.copyResize(oriented,
-              width: oriented.width >= oriented.height ? 1600 : null,
-              height: oriented.height > oriented.width ? 1600 : null)
-          : oriented;
-      final encoded = Uint8List.fromList(img.encodeJpg(resized, quality: 82));
-      if (encoded.length > 2 * 1024 * 1024) {
-        throw Exception(
-            'La imagen comprimida supera 2 MB. Escoge una foto más pequeña.');
+      for (final source in sources) {
+        final decoded = img.decodeImage(source);
+        if (decoded == null) {
+          throw Exception('Selecciona una imagen JPG o PNG.');
+        }
+        final oriented = img.bakeOrientation(decoded);
+        final resized = oriented.width > 1600 || oriented.height > 1600
+            ? img.copyResize(oriented,
+                width: oriented.width >= oriented.height ? 1600 : null,
+                height: oriented.height > oriented.width ? 1600 : null)
+            : oriented;
+        final encoded = Uint8List.fromList(img.encodeJpg(resized, quality: 82));
+        if (encoded.length > 2 * 1024 * 1024) {
+          throw Exception(
+              'La imagen comprimida supera 2 MB. Escoge una foto más pequeña.');
+        }
+        if (mounted) setState(() => images.add(encoded));
       }
-      if (mounted) setState(() => imageBytes = encoded);
     } catch (e) {
       if (mounted) {
         setState(() => error = e.toString().replaceFirst('Exception: ', ''));
@@ -208,7 +249,7 @@ class _PhotoEntryDialogState extends State<PhotoEntryDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Foto de planilla'),
+        title: const Text('Fotos de planilla'),
         content: SizedBox(
             width: 460,
             child: SingleChildScrollView(
@@ -227,16 +268,26 @@ class _PhotoEntryDialogState extends State<PhotoEntryDialog> {
                 OutlinedButton.icon(
                     onPressed: processing ? null : () => choose(false),
                     icon: const Icon(Icons.upload_file),
-                    label: const Text('Subir imagen')),
+                    label: const Text('Subir imágenes')),
               ]),
               if (processing)
                 const Padding(
                     padding: EdgeInsets.all(16),
                     child: CircularProgressIndicator()),
-              if (imageBytes != null)
-                Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Image.memory(imageBytes!, height: 170)),
+              Text('${images.length} fotos seleccionadas'),
+              for (var i = 0; i < images.length; i++)
+                ListTile(
+                  leading: Image.memory(images[i],
+                      width: 60, height: 60, fit: BoxFit.cover),
+                  title: Text('Foto ${i + 1}'),
+                  trailing: IconButton(
+                    tooltip: 'Quitar foto seleccionada',
+                    onPressed: processing
+                        ? null
+                        : () => setState(() => images.removeAt(i)),
+                    icon: const Icon(Icons.close),
+                  ),
+                ),
               if (error != null)
                 Text(error!,
                     style:
@@ -250,14 +301,14 @@ class _PhotoEntryDialogState extends State<PhotoEntryDialog> {
               onPressed: processing
                   ? null
                   : () {
-                      if (sheet.text.trim().isEmpty || imageBytes == null) {
+                      if (sheet.text.trim().isEmpty || images.isEmpty) {
                         setState(() => error =
                             'Escribe el número de planilla y selecciona una foto.');
                         return;
                       }
                       Navigator.pop(context, {
                         'sheet': sheet.text.trim(),
-                        'image': base64Encode(imageBytes!)
+                        'images': images.map(base64Encode).toList()
                       });
                     },
               child: const Text('Guardar'))
