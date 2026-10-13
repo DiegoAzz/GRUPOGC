@@ -156,7 +156,7 @@ try {
         $value=str_replace(',','.',$input['value']);
         if (!preg_match('/^\d{1,9}(\.\d{1,2})?$/D',$value)) respond('Valor inválido. Usa hasta dos decimales, sin separadores de miles.',422);
         $parts=explode('.',$value); $amount=(int)$parts[0]*100+(int)str_pad($parts[1] ?? '',2,'0');
-        if ($amount<=0) respond('El valor debe ser mayor que cero.',422);
+        if ($amount<0) respond('El valor no puede ser negativo.',422);
         $record=['date'=>$input['date'],'kind'=>$input['kind'],'detail'=>trim($input['detail']),'amount'=>$amount];
         $id=$input['id'] ?? null;
         if ($id===null) $db->prepare("INSERT INTO records(entity,payload) VALUES ('ledger',?)")->execute([json_encode($record,JSON_UNESCAPED_UNICODE)]);
@@ -212,7 +212,7 @@ try {
             $value=str_replace(',','.',$change['value']);
             if (!validDate($change['date']) || !preg_match('/^\d{1,9}(\.\d{1,2})?$/D',$value)) { $db->rollBack(); respond('Fecha o valor de planilla inválido.',422); }
             $parts=explode('.',$value); $amount=(int)$parts[0]*100+(int)str_pad($parts[1] ?? '',2,'0');
-            if ($amount<=0) { $db->rollBack(); respond('El valor debe ser mayor que cero.',422); }
+            if ($amount<0) { $db->rollBack(); respond('El valor no puede ser negativo.',422); }
             $updated[$change['id']]=array_replace($originals[$change['id']]['payload'],['date'=>$change['date'],'sheet'=>trim($change['sheet']),'amount'=>$amount]);
         }
         $newRows=$input['new_rows'] ?? [];
@@ -228,7 +228,7 @@ try {
             $value=str_replace(',','.',$newRow['value']);
             if (!validDate($newRow['date']) || !preg_match('/^\d{1,9}(\.\d{1,2})?$/D',$value)) { $db->rollBack(); respond('Fecha o valor de planilla inválido.',422); }
             $parts=explode('.',$value); $amount=(int)$parts[0]*100+(int)str_pad($parts[1] ?? '',2,'0');
-            if ($amount<=0) { $db->rollBack(); respond('El valor debe ser mayor que cero.',422); }
+            if ($amount<0) { $db->rollBack(); respond('El valor no puede ser negativo.',422); }
             $charge=['client_id'=>(string)$bill['client']['id'],'date'=>$newRow['date'],'sheet'=>trim($newRow['sheet']),'amount'=>$amount];
             foreach (['vehicle'=>'vehicles','driver'=>'drivers'] as $field=>$catalog) {
                 if (!preg_match('/^[1-9][0-9]*$/D',$newRow[$field.'_id'])) { $db->rollBack(); respond('Vehículo o conductor inválido.',422); }
@@ -318,7 +318,7 @@ try {
             $value=str_replace(',','.',$r['value']);
             if(!preg_match('/^\d{1,9}(\.\d{1,2})?$/D',$value)) respond('Valor inválido. Usa máximo dos decimales y sin separadores de miles.',422);
             $parts=explode('.',$value); $clean['amount']=(int)$parts[0]*100+(int)str_pad($parts[1] ?? '',2,'0'); unset($clean['value']);
-            if($clean['amount']<=0) respond('El valor debe ser mayor que cero',422);
+            if($clean['amount']<0) respond('El valor no puede ser negativo',422);
             $q=$db->prepare("SELECT id FROM records WHERE entity='clients' AND id=? FOR UPDATE");$q->execute([$r['client_id']]);if(!$q->fetchColumn()) respond('Cliente inexistente',422);
         }
         if ($entity==='signatures') {

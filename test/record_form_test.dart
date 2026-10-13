@@ -3,6 +3,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:grupo_cg/record_form.dart';
 
 void main() {
+  testWidgets('Guarda un valor cero sin convertirlo en un campo vacío',
+      (tester) async {
+    Map<String, String>? saved;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+          builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () async {
+                    saved = await showDialog<Map<String, String>>(
+                      context: context,
+                      builder: (_) => const RecordFormDialog(
+                        title: 'Cobro',
+                        fields: {'value': 'Valor en pesos'},
+                      ),
+                    );
+                  },
+                  child: const Text('Nuevo'),
+                ),
+              )),
+    ));
+    await tester.tap(find.text('Nuevo'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('value')), '0');
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+    expect(saved, {'value': '0'});
+    expect(find.byType(RecordFormDialog), findsNothing);
+  });
+
   test(
       'El valor rechaza letras, símbolos y pegados inválidos sin alterar el importe',
       () {
@@ -39,10 +68,12 @@ void main() {
   });
 
   test('Valida importes, correo y teléfono con instrucciones concretas', () {
-    for (final value in ['', '0', '0,00', '1,', 'abc', '1000000000']) {
+    for (final value in ['', '-1', '1,', 'abc', '1000000000']) {
       expect(validateRecordField('value', 'Valor', value), isNotNull);
     }
-    expect(validateRecordField('value', 'Valor', '0,01'), isNull);
+    for (final value in ['0', '0,00', '0.00', '0,01']) {
+      expect(validateRecordField('value', 'Valor', value), isNull);
+    }
     expect(
         validateRecordField('email', 'Correo', 'correo-invalido'), isNotNull);
     expect(
@@ -64,7 +95,7 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('email')), 'sin-correo');
     await tester.tap(find.text('Guardar'));
     await tester.pumpAndSettle();
-    expect(find.text('El valor debe ser mayor que cero.'), findsOneWidget);
+    expect(tester.state<FormFieldState<String>>(value).validate(), isTrue);
     expect(
         find.text('Escribe un correo válido, por ejemplo nombre@correo.com.'),
         findsOneWidget);

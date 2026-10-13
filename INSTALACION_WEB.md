@@ -53,7 +53,7 @@ Para designar una cuenta administradora existente, añadir `'admin_email' => 'gr
 Compilar desde la raíz del proyecto:
 
 ```sh
-flutter build web --release --base-href=/grupocg/
+powershell -ExecutionPolicy Bypass -File scripts/build-web.ps1
 ```
 
 Subir el contenido de `build/web/` a `public_html/grupocg/`, conservando la carpeta `api/`. Si se publica en la raíz del dominio, compilar con `--base-href=/`.

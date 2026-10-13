@@ -29,9 +29,6 @@ String? validateRecordField(String field, String label, String? raw) {
     if (!RegExp(r'^[0-9]{1,9}([,.][0-9]{1,2})?$').hasMatch(value)) {
       return 'Escribe un valor como 25000 o 25000,50.';
     }
-    if (double.parse(value.replaceAll(',', '.')) <= 0) {
-      return 'El valor debe ser mayor que cero.';
-    }
   }
   if (field == 'email' &&
       !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value)) {
@@ -151,7 +148,7 @@ class _RecordFormDialogState extends State<RecordFormDialog> {
                                   prefixText:
                                       field.key == 'value' ? '\$ ' : null,
                                   helperText: field.key == 'value'
-                                      ? 'Ejemplo: 25000 o 25000,50. Sin separadores de miles.'
+                                      ? 'Se permite 0. Ejemplo: 25000 o 25000,50. Sin separadores de miles.'
                                       : null,
                                   helperMaxLines: 3,
                                   errorText: field.key == 'value'
