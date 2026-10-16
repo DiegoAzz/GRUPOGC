@@ -122,7 +122,7 @@ try {
         setcookie('grupocg_session',$_COOKIE['grupocg_session'],['expires'=>time()+34560000,'path'=>'/grupocg/api/','secure'=>true,'httponly'=>true,'samesite'=>'Strict']);
     }
     function state(PDO $db): array {
-        $result=['clients'=>[],'charges'=>[],'signatures'=>[],'issuer'=>new stdClass(),'bills'=>[],'vehicles'=>[],'drivers'=>[],'planilla_photos'=>[],'ledger'=>[]];
+        $result=['clients'=>[],'charges'=>[],'signatures'=>[],'issuer'=>new stdClass(),'bills'=>[],'vehicles'=>[],'drivers'=>[],'planilla_photos'=>[],'ledger'=>[],'loans'=>[]];
         foreach($db->query('SELECT * FROM records ORDER BY id DESC') as $row) { $v=json_decode($row['payload'],true); $v['id']=(int)$row['id']; if($row['entity']==='planilla_photos') unset($v['image']); if($row['entity']==='issuer') $result['issuer']=$v; else $result[$row['entity']][]=$v; }
         $names=array_column($result['clients'],'name','id');
         foreach($result['charges'] as &$r) $r['client_name']=$names[$r['client_id']] ?? '';
@@ -148,6 +148,35 @@ try {
         if (!$size || strlen($image)>2097152 || !in_array($size['mime'],['image/jpeg','image/png'],true) || $size[0]>5000 || $size[1]>5000) respond('La foto debe ser JPG o PNG de máximo 2 MB.',422);
         $photo=['sheet'=>trim($input['sheet']),'image'=>base64_encode($image),'created_at'=>date(DATE_ATOM)];
         $db->prepare("INSERT INTO records(entity,payload) VALUES ('planilla_photos',?)")->execute([json_encode($photo,JSON_UNESCAPED_UNICODE)]);
+        respond(true);
+    }
+    if (in_array($action,['save_loan','add_loan_payment'],true)) {
+        required($input,['date','value']);
+        if (!validDate($input['date'])) respond('Fecha inválida.',422);
+        $value=str_replace(',','.',$input['value']);
+        if (!preg_match('/^[0-9]{1,9}(\.[0-9]{1,2})?$/D',$value)) respond('Valor inválido. Usa hasta dos decimales.',422);
+        $parts=explode('.',$value); $amount=(int)$parts[0]*100+(int)str_pad($parts[1] ?? '',2,'0');
+        if ($amount<=0) respond('El valor debe ser mayor que cero.',422);
+        if ($action==='save_loan') {
+            required($input,['name']);
+            $record=['name'=>trim($input['name']),'date'=>$input['date'],'amount'=>$amount,'payments'=>[]];
+            $db->prepare("INSERT INTO records(entity,payload) VALUES ('loans',?)")->execute([json_encode($record,JSON_UNESCAPED_UNICODE)]);
+        } else {
+            $id=$input['id'] ?? null;
+            if (!is_int($id) || $id<=0) respond('Préstamo inválido.',422);
+            $db->beginTransaction();
+            $q=$db->prepare("SELECT payload FROM records WHERE entity='loans' AND id=? FOR UPDATE"); $q->execute([$id]);
+            $payload=$q->fetchColumn();
+            if ($payload===false) { $db->rollBack(); respond('El préstamo ya no existe.',404); }
+            $record=json_decode($payload,true,512,JSON_THROW_ON_ERROR);
+            $paid=array_sum(array_column($record['payments'],'amount'));
+            if ($amount>$record['amount']-$paid || $input['date']<$record['date']) {
+                $db->rollBack(); respond('El abono supera el saldo o su fecha es anterior al préstamo.',422);
+            }
+            $record['payments'][]=['date'=>$input['date'],'amount'=>$amount];
+            $db->prepare("UPDATE records SET payload=? WHERE entity='loans' AND id=?")->execute([json_encode($record,JSON_UNESCAPED_UNICODE),$id]);
+            $db->commit();
+        }
         respond(true);
     }
     if ($action==='save_ledger') {
@@ -288,7 +317,7 @@ try {
     if ($action==='delete') {
         $entity=$input['entity'] ?? null;
         $id=$input['id'] ?? null;
-        if (!is_string($entity) || !in_array($entity,['clients','vehicles','drivers','charges','signatures','issuer','bills','planilla_photos','ledger'],true) || !is_int($id) || $id<=0) respond('Registro inválido',422);
+        if (!is_string($entity) || !in_array($entity,['clients','vehicles','drivers','charges','signatures','issuer','bills','planilla_photos','ledger','loans'],true) || !is_int($id) || $id<=0) respond('Registro inválido',422);
         $db->beginTransaction();
         $table=$entity==='bills' ? 'bills' : 'records';
         $where=$entity==='bills' ? 'id=?' : 'id=? AND entity=?';

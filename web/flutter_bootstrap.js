@@ -5,7 +5,7 @@
 // cannot hide the columns and users update after deployment.
 for (const build of _flutter.buildConfig.builds) {
   if (build.mainJsPath) {
-    build.mainJsPath += '?v=20261007-iconos';
+    build.mainJsPath += '?v=20261016-contabilidad-abonos-v3';
   }
 }
 _flutter.loader.load({

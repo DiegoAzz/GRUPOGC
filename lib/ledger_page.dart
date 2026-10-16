@@ -112,7 +112,7 @@ class _LedgerPageState extends State<LedgerPage> {
         .where((e) => e['kind'] == 'expense')
         .fold<int>(0, (sum, e) => sum + (e['amount'] as num).toInt());
     return Scaffold(
-      appBar: AppBar(title: const Text('Contabilidad'), actions: [
+      appBar: AppBar(title: const Text('Ingresos y gastos'), actions: [
         IconButton(
             tooltip: 'Actualizar',
             onPressed: busy ? null : () => run(load),

@@ -10,6 +10,7 @@ import 'bill_columns.dart';
 import 'users_page.dart';
 import 'bill_edit.dart';
 import 'ledger_page.dart';
+import 'loans_page.dart';
 import 'planilla_photos_page.dart';
 
 void main() => runApp(const CobrosApp());
@@ -549,16 +550,47 @@ class _HomeState extends State<Home> {
                     MaterialPageRoute<void>(
                         builder: (_) => PlanillaPhotosPage(api: api)));
               }),
-          ListTile(
-              leading: const Icon(Icons.account_balance_wallet_outlined),
-              title: const Text('Contabilidad'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                        builder: (_) => LedgerPage(api: api)));
-              }),
+          ExpansionTile(
+            leading: const Icon(Icons.account_balance_wallet_outlined),
+            title: const Text('Contabilidad'),
+            childrenPadding: const EdgeInsets.only(left: 24),
+            children: [
+              ListTile(
+                leading: const Icon(Icons.swap_vert),
+                title: const Text('Ingresos y gastos'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                          builder: (_) => LedgerPage(api: api)));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.account_balance_outlined),
+                title: const Text('Préstamos'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                          builder: (_) => LoansPage(api: api)));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.payments_outlined),
+                title: const Text('Abonos de préstamos'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                          builder: (_) =>
+                              LoansPage(api: api, paymentsMode: true)));
+                },
+              ),
+            ],
+          ),
           if (data['current_user']?['can_manage_users'] == true)
             ListTile(
                 leading: const Icon(Icons.manage_accounts_outlined),
