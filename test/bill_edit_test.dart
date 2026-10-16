@@ -3,6 +3,62 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:grupo_cg/bill_edit.dart';
 
 void main() {
+  testWidgets('Eliminar una repetida permite deshacer y guarda solo su ID',
+      (tester) async {
+    Map<String, dynamic>? result;
+    final data = <String, dynamic>{
+      'bill': {'id': 485, 'number': 'CC-485', 'date': '2026-10-01'},
+      'revision': 'bill-version',
+      'rows': [
+        for (final id in [1, 2])
+          {
+            'id': id,
+            'date': '2026-10-01',
+            'sheet': '518144',
+            'value': '105040.00',
+            'revision': 'version-$id',
+          },
+      ],
+    };
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+          builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () async {
+                    result = await showDialog<Map<String, dynamic>>(
+                      context: context,
+                      builder: (_) => BillEditDialog(contextData: data),
+                    );
+                  },
+                  child: const Text('Abrir'),
+                ),
+              )),
+    ));
+    await tester.tap(find.text('Abrir'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Eliminar planilla').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Planilla 518144'), findsOneWidget);
+    expect(data['rows'], hasLength(2));
+    expect(result, isNull);
+    await tester.ensureVisible(find.text('Deshacer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Deshacer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Planilla 518144'), findsNWidgets(2));
+    await tester.ensureVisible(find.byTooltip('Eliminar planilla').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Eliminar planilla').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Guardar cuenta y planillas'));
+    await tester.pumpAndSettle();
+    expect(result!['rows'].single['id'], 1);
+    expect(result!['deleted_rows'].single['id'], 2);
+    expect(result!['deleted_rows'].single['revision'], 'version-2');
+    expect(data['rows'], hasLength(2));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'Añadir planilla queda pendiente y se puede quitar antes de guardar',
     (tester) async {

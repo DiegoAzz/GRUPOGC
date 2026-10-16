@@ -17,6 +17,7 @@ class _BillEditDialogState extends State<BillEditDialog> {
           .toList();
   late String date = widget.contextData['bill']['date'] as String;
   final List<Map<String, dynamic>> newRows = [];
+  final List<Map<String, dynamic>> deletedRows = [];
 
   Future<void> addRow() async {
     final values = await showDialog<Map<String, String>>(
@@ -120,10 +121,23 @@ class _BillEditDialogState extends State<BillEditDialog> {
                   subtitle: Text(
                     '${row['date']} · ${money((double.parse((row['value'] as String).replaceAll(',', '.')) * 100).round())}',
                   ),
-                  trailing: IconButton(
-                    tooltip: 'Editar planilla',
-                    icon: const Icon(Icons.edit_outlined),
-                    onPressed: () => editRow(row),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Editar planilla',
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: () => editRow(row),
+                      ),
+                      IconButton(
+                        tooltip: 'Eliminar planilla',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => setState(() {
+                          rows.remove(row);
+                          deletedRows.add(row);
+                        }),
+                      ),
+                    ],
                   ),
                   onTap: () => editRow(row),
                 ),
@@ -143,6 +157,22 @@ class _BillEditDialogState extends State<BillEditDialog> {
                   ),
                 ),
               ),
+            if (deletedRows.isNotEmpty) ...[
+              const Text(
+                'Al guardar se eliminarán estas planillas de la cuenta y de los cobros originales.',
+              ),
+              for (final row in deletedRows)
+                ListTile(
+                  title: Text('Planilla ${row['sheet']} por eliminar'),
+                  trailing: TextButton(
+                    onPressed: () => setState(() {
+                      deletedRows.remove(row);
+                      rows.add(row);
+                    }),
+                    child: const Text('Deshacer'),
+                  ),
+                ),
+            ],
             Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
@@ -159,13 +189,16 @@ class _BillEditDialogState extends State<BillEditDialog> {
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, <String, dynamic>{
-            'id': widget.contextData['bill']['id'],
-            'revision': widget.contextData['revision'],
-            'date': date,
-            'rows': rows,
-            'new_rows': newRows,
-          }),
+          onPressed: rows.isEmpty && newRows.isEmpty
+              ? null
+              : () => Navigator.pop(context, <String, dynamic>{
+                    'id': widget.contextData['bill']['id'],
+                    'revision': widget.contextData['revision'],
+                    'date': date,
+                    'rows': rows,
+                    'new_rows': newRows,
+                    'deleted_rows': deletedRows,
+                  }),
           child: const Text('Guardar cuenta y planillas'),
         ),
       ],

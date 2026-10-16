@@ -203,10 +203,18 @@ try {
         required($input,['date']);
         if (!validDate($input['date'])) { $db->rollBack(); respond('Fecha de cuenta inválida.',422); }
         $changes=$input['rows'] ?? null;
-        if (!is_array($changes) || !array_is_list($changes) || count($changes)!==count($originals)) { $db->rollBack(); respond('Debes conservar todas las planillas de la cuenta.',422); }
+        $deletedRows=$input['deleted_rows'] ?? [];
+        if (!is_array($changes) || !array_is_list($changes) || !is_array($deletedRows) || !array_is_list($deletedRows)) { $db->rollBack(); respond('Planillas inválidas.',422); }
+        $deleted=[];
+        foreach ($deletedRows as $change) {
+            if (!is_array($change) || !is_int($change['id'] ?? null) || !isset($originals[$change['id']]) || isset($deleted[$change['id']])) { $db->rollBack(); respond('Planilla a eliminar inválida o repetida.',422); }
+            if (($change['revision'] ?? null)!==$originals[$change['id']]['revision']) { $db->rollBack(); respond('Una planilla cambió mientras la editabas. Cierra y vuelve a abrir el editor.',409); }
+            $deleted[$change['id']]=true;
+        }
+        if (count($changes)+count($deleted)!==count($originals)) { $db->rollBack(); respond('Indica cuáles planillas conservar o eliminar.',422); }
         $updated=[];
         foreach ($changes as $change) {
-            if (!is_array($change) || !is_int($change['id'] ?? null) || !isset($originals[$change['id']]) || isset($updated[$change['id']])) { $db->rollBack(); respond('Planilla inválida o repetida.',422); }
+            if (!is_array($change) || !is_int($change['id'] ?? null) || !isset($originals[$change['id']]) || isset($updated[$change['id']]) || isset($deleted[$change['id']])) { $db->rollBack(); respond('Planilla inválida o repetida.',422); }
             required($change,['date','sheet','value','revision']);
             if ($change['revision']!==$originals[$change['id']]['revision']) { $db->rollBack(); respond('Una planilla cambió mientras la editabas. Cierra y vuelve a abrir el editor.',409); }
             $value=str_replace(',','.',$change['value']);
@@ -217,6 +225,7 @@ try {
         }
         $newRows=$input['new_rows'] ?? [];
         if (!is_array($newRows) || !array_is_list($newRows)) { $db->rollBack(); respond('Planillas adicionales inválidas.',422); }
+        if (!$updated && !$newRows) { $db->rollBack(); respond('La cuenta debe conservar al menos una planilla.',422); }
         $additions=[];
         if ($newRows) {
             $q=$db->prepare("SELECT id FROM records WHERE entity='clients' AND id=? FOR UPDATE"); $q->execute([$bill['client']['id']]);
@@ -240,7 +249,9 @@ try {
             }
             $additions[]=$charge;
         }
+        foreach ($deleted as $chargeId=>$_) $db->prepare("DELETE FROM records WHERE entity='charges' AND id=?")->execute([$chargeId]);
         foreach ($updated as $chargeId=>$charge) $db->prepare("UPDATE records SET payload=? WHERE entity='charges' AND id=?")->execute([json_encode($charge,JSON_UNESCAPED_UNICODE),$chargeId]);
+        $bill['rows']=array_values(array_filter($bill['rows'],fn($row)=>!isset($deleted[(int)$row['id']])));
         foreach ($bill['rows'] as &$row) {
             $custom=$row['custom_values'] ?? new stdClass(); $chargeId=(int)$row['id'];
             $row=$updated[$chargeId]+['id'=>$chargeId,'custom_values'=>$custom,'client_name'=>$bill['client']['name']];
