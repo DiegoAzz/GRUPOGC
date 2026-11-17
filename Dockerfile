@@ -23,3 +23,4 @@ RUN a2enmod rewrite \
 EXPOSE 80
 
 COPY backend/ /var/www/html/backend/
+COPY grupocg-config.php /var/grupocg-config.php
