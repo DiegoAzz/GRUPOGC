@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 class Api {
   static const url = String.fromEnvironment('API_URL',
-      defaultValue: 'https://appzplay.online/grupocg/api/index.php');
+      defaultValue: 'https://grupocg.appzplay.online/backend/index.php');
   String token = '';
   Future<dynamic> call(String action, [Map<String, dynamic>? data]) async {
     if (url.isEmpty) {
