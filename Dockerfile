@@ -21,3 +21,5 @@ RUN a2enmod rewrite \
     && find /var/www/html -type f -exec chmod 644 {} \;
 
 EXPOSE 80
+
+COPY backend/ /var/www/html/backend/
